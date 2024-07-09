@@ -3,6 +3,7 @@ import Image from 'next/image';
 import clsx from 'clsx';
 
 import LogoApiVideo from '@/components/platforms/api-video/logo.svg';
+import LogoAzure from '@/components/platforms/azure/logo.svg';
 import LogoCloudflare from '@/components/platforms/cloudflare/logo.svg';
 import LogoMux from '@/components/platforms/mux/logo.svg';
 import LogoS3 from '@/components/platforms/s3/logo.svg';
@@ -32,6 +33,11 @@ const PLATFORMS: Platforms = {
       id: 'cloudflare-stream',
       name: 'Cloudflare Stream',
       logo: LogoCloudflare,
+    },
+    {
+      id: 'azure',
+      name: 'Azure',
+      logo: LogoAzure,
     },
   ],
   destination: [

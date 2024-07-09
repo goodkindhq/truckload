@@ -1,10 +1,11 @@
 import { HeadBucketCommand, S3Client } from '@aws-sdk/client-s3';
+import { BlobServiceClient, StorageSharedKeyCredential } from '@azure/storage-blob';
 
 import Mux from '@mux/mux-node';
 
-import validateApiVideoCredentials from './api-video';
-
 import type { PlatformCredentials } from '@/utils/store';
+
+import validateApiVideoCredentials from './api-video';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,6 +56,25 @@ export async function POST(request: Request) {
         return new Response('ok', { status: 200 });
       } catch (error) {
         console.error(error);
+        return Response.json({ error: 'Invalid credentials' }, { status: 401 });
+      }
+    case 'azure':
+      try {
+        const sharedKeyCredential = new StorageSharedKeyCredential(data.publicKey, data.secretKey!);
+        const blobServiceClient = new BlobServiceClient(
+          `https://${data.publicKey}.blob.core.windows.net`,
+          sharedKeyCredential
+        );
+
+        const response = await blobServiceClient.getAccountInfo();
+
+        if (response.requestId) {
+          return new Response('ok', { status: 200 });
+        } else {
+          return Response.json({ error: 'Invalid credentials' }, { status: 401 });
+        }
+      } catch (error) {
+        console.error('Error:', error); // Catching and logging any errors
         return Response.json({ error: 'Invalid credentials' }, { status: 401 });
       }
     case 'mux':
