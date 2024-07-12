@@ -3,6 +3,8 @@ import { EventSchemas, Inngest } from 'inngest';
 
 import type { AssetFilter, DestinationPlatform, PlatformCredentials, SourcePlatform, Video } from '@/utils/store';
 
+import { MuxCallbackData } from './providers/mux/types';
+
 type FetchVideo = {
   data: {
     jobId: string;
@@ -41,6 +43,12 @@ type InitMigration = {
   };
 };
 
+type HandleWebhook = {
+  data: {
+    mux: MuxCallbackData;
+  };
+};
+
 type Events = {
   'truckload/migration.init': InitMigration;
   'truckload/migration.fetch-page': FetchPage;
@@ -48,6 +56,7 @@ type Events = {
   'truckload/video.fetch': FetchVideo;
   'truckload/video.transfer': ProcessVideo;
   'truckload/cloudflare-stream.check-source-status': FetchVideo;
+  'truckload/azure.handle-webhook': HandleWebhook;
 };
 
 const mw = encryptionMiddleware({

@@ -95,6 +95,12 @@ const PLATFORM_CREDENTIALS = [
         name: 'secretKey',
         type: 'text',
       },
+      {
+        label: 'Environment',
+        name: 'environment',
+        type: 'select',
+        values: ['dev', 'qa', 'prod'],
+      },
     ],
   },
   {

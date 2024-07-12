@@ -12,7 +12,7 @@ import { updateJobStatus } from '@/utils/job';
 export const transferVideo = inngest.createFunction(
   { id: 'transfer-video', name: 'Transfer video - Mux', concurrency: 10 },
   { event: 'truckload/video.transfer' },
-  async ({ event, step }) => {
+  async ({ event }) => {
     const mux = new Mux({
       tokenId: event.data.encrypted.destinationPlatform.credentials!.publicKey,
       tokenSecret: event.data.encrypted.destinationPlatform.credentials!.secretKey,
@@ -28,7 +28,12 @@ export const transferVideo = inngest.createFunction(
 
     let payload: Mux.Video.Assets.AssetCreateParams = {
       input,
-      passthrough: JSON.stringify({ jobId: event.data.jobId, sourceVideoId: event.data.encrypted.video.id }),
+      passthrough: JSON.stringify({
+        jobId: event.data.jobId,
+        sourceVideoId: event.data.encrypted.video.id,
+        title: event.data.encrypted.video.title,
+        environment: event.data.encrypted.sourcePlatform.credentials!.additionalMetadata!.environment,
+      }),
     };
 
     if (config?.maxResolutionTier) {
@@ -56,7 +61,7 @@ export const transferVideo = inngest.createFunction(
 
     await updateJobStatus(event.data.jobId, 'migration.video.progress', {
       video: {
-        id: event.data.encrypted.video.id,
+        id: event.data.encrypted.video.title,
         status: 'in-progress',
         progress: 0,
       },

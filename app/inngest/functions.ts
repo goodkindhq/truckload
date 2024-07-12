@@ -12,7 +12,7 @@ type Events = GetEvents<typeof inngest>;
 export const processVideo = inngest.createFunction(
   { id: 'process-video', name: 'Process video' },
   { event: 'truckload/video.process' },
-  async ({ event, step }) => {
+  async ({ event, step, logger }) => {
     const videoData = event.data.encrypted.video;
     // use the source platform id to conditionally set the fetch page function
     const sourcePlatformId = event.data.encrypted.sourcePlatform.id;
@@ -32,6 +32,10 @@ export const processVideo = inngest.createFunction(
         },
       },
     });
+
+    if (!video) {
+      return { status: 'skipped' };
+    }
 
     const transfer = await step.invoke(`transfer-video-${videoData.id}`, {
       function: transferVideoFn,
@@ -56,7 +60,6 @@ export const initiateMigration = inngest.createFunction(
     let jobId = event.id;
     let hasMorePages = true;
     let page = 1;
-    let nextPageNumber: number | undefined = undefined;
     let nextPageToken: string | null | undefined = undefined;
     let videoList: Video[] = [];
 
