@@ -88,7 +88,8 @@ export default function MigrationStatus() {
                         video.status === 'pending' && 'bg-orange-400 text-white',
                         video.status === 'failed' && 'bg-red-400 text-white',
                         video.status === 'in-progress' && 'bg-blue-400 text-white',
-                        video.status === 'completed' && 'bg-green-400 text-white'
+                        video.status === 'completed' && 'bg-green-400 text-white',
+                        video.status === 'skipped' && 'bg-yellow-400 text-white'
                       )}
                     >
                       {video.status}

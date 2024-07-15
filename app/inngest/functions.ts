@@ -86,17 +86,6 @@ export const initiateMigration = inngest.createFunction(
       logger.info('isTruncated: ' + isTruncated);
       logger.info('videos: ' + JSON.stringify(videos));
 
-      await step.run('update-job-status-with-videos-fetched', async () => {
-        await updateJobStatus(jobId!, 'migration.videos.fetched', {
-          pageNumber: page,
-          videos: videoList.reduce<Record<string, VideoWithMigrationStatus>>((acc, video) => {
-            acc[video.id] = { ...video, status: 'pending', progress: 0 };
-            return acc;
-          }, {}),
-          hasMorePages: isTruncated,
-        });
-      });
-
       if (!isTruncated) {
         hasMorePages = false;
       } else {

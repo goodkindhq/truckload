@@ -35,39 +35,40 @@ export const fetchVideo = inngest.createFunction(
   { id: 'fetch-video-azure', name: 'Fetch video - Azure Blob Storage', concurrency: 10 },
   { event: 'truckload/video.fetch' },
   async ({ event, logger }) => {
+    const payloadVideo = event.data.encrypted.video;
     const { environment } = event.data.encrypted.credentials.additionalMetadata!;
     const db = getDbInstance(environment);
 
     const accountName = event.data.encrypted.credentials.publicKey;
     const accountKey = event.data.encrypted.credentials.secretKey!;
-    const blobName = event.data.encrypted.video.id;
+    const blobName = event.data.encrypted.video.title!;
     const containerName = event.data.encrypted.video.url!;
 
-    const blobWithoutExt = blobName.split('.')[0];
+    const foundVideo = await db.collection('videos').findOne({ uuid: payloadVideo.id });
 
-    const foundVideo = await db.collection('videos').findOne({ uuid: blobWithoutExt });
-
+    // double check as i put this in the other function
     if (!foundVideo) {
-      logger.warn('Video not found in DB', { uuid: blobWithoutExt, environment });
+      logger.warn('Video not found in DB', { uuid: payloadVideo.id, environment });
 
       await updateJobStatus(event.data.jobId!, 'migration.video.progress', {
         video: {
           id: blobName,
-          status: 'failed',
-          progress: 0,
+          status: 'skipped',
+          progress: 100,
         },
       });
 
       return null;
     }
 
+    // double check as i put this in the other function
     if (foundVideo.muxAsset) {
-      logger.info('Video already on Mux. Skipping', { uuid: blobWithoutExt, environment });
+      logger.info('Video already on Mux. Skipping', { uuid: payloadVideo.id, environment });
 
       await updateJobStatus(event.data.jobId!, 'migration.video.progress', {
         video: {
           id: blobName,
-          status: 'completed',
+          status: 'skipped',
           progress: 100,
         },
       });
@@ -96,7 +97,7 @@ export const fetchVideo = inngest.createFunction(
     const url = `${containerClient.url}/${blobName}?${sasToken}`;
 
     const video: Video = {
-      id: blobWithoutExt,
+      id: payloadVideo.id,
       url,
       title: blobName,
     };
@@ -108,7 +109,10 @@ export const fetchVideo = inngest.createFunction(
 export const fetchPage = inngest.createFunction(
   { id: 'fetch-page-azure', name: 'Fetch page - Azure Blob Storage', concurrency: 1 },
   { event: 'truckload/migration.fetch-page' },
-  async ({ event }) => {
+  async ({ event, logger }) => {
+    const { environment } = event.data.encrypted.additionalMetadata!;
+    const db = getDbInstance(environment);
+
     const accountName = event.data.encrypted.publicKey;
     const accountKey = event.data.encrypted.secretKey!;
 
@@ -125,12 +129,17 @@ export const fetchPage = inngest.createFunction(
       for (const container of containersResponse.containerItems) {
         const containerClient = blobServiceClient.getContainerClient(container.name);
 
-        console.log(`Scanning container ${container.name}`);
+        logger.info(`Scanning container ${container.name}`);
         // Iterate through blobs with pagination
         for await (const blobsResponse of containerClient.listBlobsFlat().byPage({ maxPageSize: 50 })) {
           for (const blob of blobsResponse.segment.blobItems) {
             if (blob.name && /\.(mp4|mov)$/i.test(blob.name) && !/_/.test(blob.name)) {
-              videos.push({ id: blob.name, url: container.name });
+              const blobWithoutExt = blob.name.split('.')[0];
+              const foundVideo = await db.collection('videos').findOne({ uuid: blobWithoutExt });
+
+              if (foundVideo && !foundVideo.muxAsset) {
+                videos.push({ id: foundVideo.uuid, url: container.name, title: blob.name });
+              }
             }
           }
         }
@@ -166,6 +175,7 @@ export const handleWebhook = inngest.createFunction(
     const db = getDbInstance(environment);
     const foundVideo = await db.collection('videos').findOne({ uuid: sourceVideoId });
 
+    // not likely to happen
     if (!foundVideo) {
       logger.warn('Video not found in DB', {
         videoUuid: sourceVideoId,

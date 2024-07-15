@@ -26,7 +26,7 @@ export type MigrationVideosFetchedEvent = {
 };
 
 export type MigrationStatus = {
-  status: 'pending' | 'in-progress' | 'retrying' | 'completed' | 'failed';
+  status: 'pending' | 'in-progress' | 'retrying' | 'completed' | 'failed' | 'skipped';
   progress: number;
 };
 
@@ -77,7 +77,7 @@ export type AssetFilter = {
 
 export type MigrationJob = {
   id: string;
-  status: 'pending' | 'in-progress' | 'completed' | 'failed';
+  status: 'pending' | 'in-progress' | 'completed' | 'failed' | 'skipped';
   progress: number;
   videos: Record<string, VideoWithMigrationStatus>;
 };

@@ -61,7 +61,7 @@ export const transferVideo = inngest.createFunction(
 
     await updateJobStatus(event.data.jobId, 'migration.video.progress', {
       video: {
-        id: event.data.encrypted.video.title,
+        id: event.data.encrypted.video.title!,
         status: 'in-progress',
         progress: 0,
       },
