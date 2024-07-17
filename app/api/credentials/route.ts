@@ -1,8 +1,12 @@
 import { HeadBucketCommand, S3Client } from '@aws-sdk/client-s3';
+import { AzureMediaServices } from '@azure/arm-mediaservices';
+import { ClientSecretCredential } from '@azure/identity';
 import { BlobServiceClient, StorageSharedKeyCredential } from '@azure/storage-blob';
 
 import Mux from '@mux/mux-node';
 
+import { AccountsByRegionType } from '@/inngest/providers/azure/types';
+import { getDbInstance } from '@/utils/db';
 import type { PlatformCredentials } from '@/utils/store';
 
 import validateApiVideoCredentials from './api-video';
@@ -60,19 +64,22 @@ export async function POST(request: Request) {
       }
     case 'azure':
       try {
-        const sharedKeyCredential = new StorageSharedKeyCredential(data.publicKey, data.secretKey!);
-        const blobServiceClient = new BlobServiceClient(
-          `https://${data.publicKey}.blob.core.windows.net`,
-          sharedKeyCredential
+        const { environment } = data.additionalMetadata!;
+        getDbInstance(environment);
+      } catch (error) {
+        console.error('Error:', error); // Catching and logging any errors
+        return Response.json({ error: 'Cannot connect to db' }, { status: 401 });
+      }
+
+      try {
+        const credentials = new ClientSecretCredential(
+          data.additionalMetadata!.tenantId,
+          data.publicKey,
+          data.secretKey!
         );
+        new AzureMediaServices(credentials, data.additionalMetadata!.subscriptionId);
 
-        const response = await blobServiceClient.getAccountInfo();
-
-        if (response.requestId) {
-          return new Response('ok', { status: 200 });
-        } else {
-          return Response.json({ error: 'Invalid credentials' }, { status: 401 });
-        }
+        return new Response('ok', { status: 200 });
       } catch (error) {
         console.error('Error:', error); // Catching and logging any errors
         return Response.json({ error: 'Invalid credentials' }, { status: 401 });

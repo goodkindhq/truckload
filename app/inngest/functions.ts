@@ -1,18 +1,18 @@
 import type { GetEvents } from 'inngest';
 
-import { updateJobStatus } from '@/utils/job';
+import { getDbInstance } from '@/utils/db';
 import type { Video } from '@/utils/store';
-import type { VideoWithMigrationStatus } from '@/utils/store';
 
 import { inngest } from './client';
 import providerFns from './providers';
+import { AccountsByRegionType } from './providers/azure/types';
 
 type Events = GetEvents<typeof inngest>;
 
 export const processVideo = inngest.createFunction(
   { id: 'process-video', name: 'Process video' },
   { event: 'truckload/video.process' },
-  async ({ event, step, logger }) => {
+  async ({ event, step }) => {
     const videoData = event.data.encrypted.video;
     // use the source platform id to conditionally set the fetch page function
     const sourcePlatformId = event.data.encrypted.sourcePlatform.id;
@@ -60,7 +60,6 @@ export const initiateMigration = inngest.createFunction(
     let jobId = event.id;
     let hasMorePages = true;
     let page = 1;
-    let nextPageToken: string | null | undefined = undefined;
     let videoList: Video[] = [];
 
     logger.info('jobId: ' + jobId);
@@ -79,7 +78,6 @@ export const initiateMigration = inngest.createFunction(
       });
 
       videoList = videoList.concat(videos);
-      nextPageToken = cursor;
 
       logger.info('page: ' + page);
       logger.info('cursor: ' + cursor);

@@ -1,105 +1,65 @@
-import {
-  BlobSASPermissions,
-  BlobServiceClient,
-  SASProtocol,
-  StorageSharedKeyCredential,
-  generateBlobSASQueryParameters,
-} from '@azure/storage-blob';
+import { AzureMediaServices } from '@azure/arm-mediaservices';
+import { ClientSecretCredential } from '@azure/identity';
+import { ContainerClient } from '@azure/storage-blob';
 import '@azure/storage-blob';
-import { MongoClient } from 'mongodb';
 
 import { inngest } from '@/inngest/client';
+import { getDbInstance } from '@/utils/db';
 import { updateJobStatus } from '@/utils/job';
 import type { Video } from '@/utils/store';
 
-const getDbInstance = (env: string) => {
-  let mongo: MongoClient;
-  switch (env) {
-    case 'dev':
-      mongo = new MongoClient(process.env.MONGO_URI_DEV!);
-      break;
-    case 'qa':
-      mongo = new MongoClient(process.env.MONGO_URI_QA!);
-      break;
-    case 'prod':
-      mongo = new MongoClient(process.env.MONGO_URI_PROD!);
-      break;
-    default:
-      throw new Error('Invalid environment');
-  }
-
-  return mongo.db();
-};
-
 export const fetchVideo = inngest.createFunction(
-  { id: 'fetch-video-azure', name: 'Fetch video - Azure Blob Storage', concurrency: 10 },
+  {
+    id: 'fetch-video-azure',
+    name: 'Fetch video - Azure Blob Storage',
+    concurrency: 5,
+  },
   { event: 'truckload/video.fetch' },
-  async ({ event, logger }) => {
+  async ({ event }) => {
     const payloadVideo = event.data.encrypted.video;
-    const { environment } = event.data.encrypted.credentials.additionalMetadata!;
-    const db = getDbInstance(environment);
 
-    const accountName = event.data.encrypted.credentials.publicKey;
-    const accountKey = event.data.encrypted.credentials.secretKey!;
-    const blobName = event.data.encrypted.video.title!;
-    const containerName = event.data.encrypted.video.url!;
-
-    const foundVideo = await db.collection('videos').findOne({ uuid: payloadVideo.id });
-
-    // double check as i put this in the other function
-    if (!foundVideo) {
-      logger.warn('Video not found in DB', { uuid: payloadVideo.id, environment });
-
-      await updateJobStatus(event.data.jobId!, 'migration.video.progress', {
-        video: {
-          id: blobName,
-          status: 'skipped',
-          progress: 100,
-        },
-      });
-
-      return null;
-    }
-
-    // double check as i put this in the other function
-    if (foundVideo.muxAsset) {
-      logger.info('Video already on Mux. Skipping', { uuid: payloadVideo.id, environment });
-
-      await updateJobStatus(event.data.jobId!, 'migration.video.progress', {
-        video: {
-          id: blobName,
-          status: 'skipped',
-          progress: 100,
-        },
-      });
-
-      return null;
-    }
-
-    const sharedKeyCredential = new StorageSharedKeyCredential(accountName, accountKey);
-    const blobServiceClient = new BlobServiceClient(
-      `https://${accountName}.blob.core.windows.net`,
-      sharedKeyCredential
+    const credentials = new ClientSecretCredential(
+      event.data.encrypted.credentials.additionalMetadata!.tenantId,
+      event.data.encrypted.credentials.publicKey,
+      event.data.encrypted.credentials.secretKey!
     );
 
-    const containerClient = blobServiceClient.getContainerClient(containerName);
+    let extIndex = 0;
+    const EXTENSIONS = ['.mp4', '.mov', '.MP4', '.MOV', '.webm', '.WEBM', ''];
 
-    const sasOptions = {
-      containerName,
-      blobName,
-      permissions: BlobSASPermissions.parse('r'),
-      startsOn: new Date(),
-      expiresOn: new Date(new Date().valueOf() + 86400), // 1 day
-      protocol: SASProtocol.HttpsAndHttp,
-    };
+    const ams = new AzureMediaServices(credentials, process.env.AZURE_SUBSCRIPTION_ID!);
+    const expirationDate = new Date();
+    expirationDate.setHours(expirationDate.getHours() + 1); // 1 hour of expiration
 
-    const sasToken = generateBlobSASQueryParameters(sasOptions, sharedKeyCredential).toString();
-    const url = `${containerClient.url}/${blobName}?${sasToken}`;
+    const response = await ams.assets.listContainerSas(
+      event.data.encrypted.credentials.additionalMetadata!.resourceGroup,
+      event.data.encrypted.credentials.additionalMetadata!.accountName,
+      `input-${payloadVideo.id}`,
+      {
+        permissions: 'ReadWrite',
+        expiryTime: expirationDate,
+      }
+    );
+
+    let fileName: string;
+    let url: string;
+    while (extIndex < EXTENSIONS.length) {
+      try {
+        fileName = `${payloadVideo.id}${EXTENSIONS[extIndex]}`;
+        const containerClient = new ContainerClient(response.assetContainerSasUrls![0]);
+        const blockBlobClient = containerClient.getBlockBlobClient(fileName);
+        await blockBlobClient.downloadToBuffer(0); // only way to check if file exists
+        url = blockBlobClient.url;
+        break;
+      } catch (e) {
+        extIndex++;
+      }
+    }
 
     const video: Video = {
       id: payloadVideo.id,
-      url,
-      title: blobName,
+      url: url!,
+      title: fileName!,
     };
 
     return video;
@@ -109,53 +69,28 @@ export const fetchVideo = inngest.createFunction(
 export const fetchPage = inngest.createFunction(
   { id: 'fetch-page-azure', name: 'Fetch page - Azure Blob Storage', concurrency: 1 },
   { event: 'truckload/migration.fetch-page' },
-  async ({ event, logger }) => {
-    const { environment } = event.data.encrypted.additionalMetadata!;
+  async ({ event }) => {
+    const { environment, accountName } = event.data.encrypted.additionalMetadata!;
     const db = getDbInstance(environment);
 
-    const accountName = event.data.encrypted.publicKey;
-    const accountKey = event.data.encrypted.secretKey!;
+    const videosFromDb = (await db
+      .collection('videos')
+      .find({
+        muxAsset: { $exists: false },
+        deleted: { $ne: true },
+        status: 'Processed',
+        streamingUrl: { $regex: accountName },
+        uuid: { $ne: null },
+      })
+      .sort({ createdAt: -1 })
+      .project({ uuid: 1 })
+      .toArray()) as { uuid: string }[];
 
-    const sharedKeyCredential = new StorageSharedKeyCredential(accountName, accountKey);
-    const blobServiceClient = new BlobServiceClient(
-      `https://${accountName}.blob.core.windows.net`,
-      sharedKeyCredential
-    );
-
-    const videos: Video[] = [];
-    let continuationToken: string | undefined = undefined;
-
-    for await (const containersResponse of blobServiceClient.listContainers().byPage({ maxPageSize: 25 })) {
-      for (const container of containersResponse.containerItems) {
-        const containerClient = blobServiceClient.getContainerClient(container.name);
-
-        logger.info(`Scanning container ${container.name}`);
-        // Iterate through blobs with pagination
-        for await (const blobsResponse of containerClient.listBlobsFlat().byPage({ maxPageSize: 50 })) {
-          for (const blob of blobsResponse.segment.blobItems) {
-            if (blob.name && /\.(mp4|mov)$/i.test(blob.name) && !/_/.test(blob.name)) {
-              const blobWithoutExt = blob.name.split('.')[0];
-              const foundVideo = await db.collection('videos').findOne({ uuid: blobWithoutExt });
-
-              if (foundVideo && !foundVideo.muxAsset) {
-                videos.push({ id: foundVideo.uuid, url: container.name, title: blob.name });
-              }
-            }
-          }
-        }
-      }
-
-      continuationToken = containersResponse.continuationToken;
-      break;
-    }
-
-    const payload = {
-      isTruncated: continuationToken !== undefined,
-      cursor: continuationToken,
-      videos,
+    return {
+      isTruncated: false,
+      cursor: null,
+      videos: videosFromDb.map((video) => ({ id: video.uuid })),
     };
-
-    return payload;
   }
 );
 
@@ -205,7 +140,9 @@ export const handleWebhook = inngest.createFunction(
       },
     };
 
-    const updatedVideo = await db.collection('videos').findOneAndUpdate({ uuid: sourceVideoId }, update);
+    const updatedVideo = await db
+      .collection('videos')
+      .findOneAndUpdate({ uuid: sourceVideoId, location: foundVideo.location }, update);
 
     await updateJobStatus(jobId, 'migration.video.progress', {
       video: {

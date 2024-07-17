@@ -10,7 +10,17 @@ import { updateJobStatus } from '@/utils/job';
 // like limits on concurrency for how many videos should be copied in parallel
 // A separate function could be created for each destination platform
 export const transferVideo = inngest.createFunction(
-  { id: 'transfer-video', name: 'Transfer video - Mux', concurrency: 10 },
+  {
+    id: 'transfer-video',
+    name: 'Transfer video - Mux',
+    concurrency: 5,
+    retries: 2,
+    throttle: {
+      limit: 15,
+      period: '15s',
+      burst: 20,
+    },
+  },
   { event: 'truckload/video.transfer' },
   async ({ event }) => {
     const mux = new Mux({

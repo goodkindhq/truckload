@@ -86,13 +86,33 @@ const PLATFORM_CREDENTIALS = [
     id: 'azure',
     values: [
       {
-        label: 'Container Name',
+        label: 'Tenant ID',
+        name: 'tenantId',
+        type: 'text',
+      },
+      {
+        label: 'Client ID',
         name: 'publicKey',
         type: 'text',
       },
       {
-        label: 'Container Access Key',
+        label: 'Client Secret',
         name: 'secretKey',
+        type: 'text',
+      },
+      {
+        label: 'Subscription ID',
+        name: 'subscriptionId',
+        type: 'text',
+      },
+      {
+        label: 'Resource Group',
+        name: 'resourceGroup',
+        type: 'text',
+      },
+      {
+        label: 'Account Name',
+        name: 'accountName',
         type: 'text',
       },
       {

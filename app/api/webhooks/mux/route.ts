@@ -24,6 +24,18 @@ export async function POST(request: Request) {
     return new Response(JSON.stringify({ ok: true }), { status: 200 });
   }
 
+  if (body.type === MuxCallBackEvents.ASSET_ERRORED) {
+    const passthrough = JSON.parse(body.data.passthrough);
+    await updateJobStatus(passthrough.jobId, 'migration.video.progress', {
+      video: {
+        id: passthrough.title,
+        status: 'failed',
+        progress: 100,
+      },
+    });
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  }
+
   if (body.type === MuxCallBackEvents.ASSET_READY) {
     await inngest.send({
       name: 'truckload/azure.handle-webhook',
