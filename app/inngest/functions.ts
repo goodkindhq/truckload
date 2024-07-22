@@ -82,6 +82,7 @@ export const initiateMigration = inngest.createFunction(
       logger.info('page: ' + page);
       logger.info('cursor: ' + cursor);
       logger.info('isTruncated: ' + isTruncated);
+      logger.info('length: ' + videoList.length);
       logger.info('videos: ' + JSON.stringify(videos));
 
       if (!isTruncated) {

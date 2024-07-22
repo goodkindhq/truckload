@@ -12,7 +12,8 @@ export const fetchVideo = inngest.createFunction(
   {
     id: 'fetch-video-azure',
     name: 'Fetch video - Azure Blob Storage',
-    concurrency: 5,
+    concurrency: 10,
+    retries: 1,
   },
   { event: 'truckload/video.fetch' },
   async ({ event }) => {
@@ -83,6 +84,7 @@ export const fetchPage = inngest.createFunction(
         uuid: { $ne: null },
       })
       .sort({ createdAt: -1 })
+      .limit(5000)
       .project({ uuid: 1 })
       .toArray()) as { uuid: string }[];
 
