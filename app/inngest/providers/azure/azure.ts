@@ -28,7 +28,10 @@ export const fetchVideo = inngest.createFunction(
     let extIndex = 0;
     const EXTENSIONS = ['.mp4', '.mov', '.MP4', '.MOV', '.webm', '.WEBM', ''];
 
-    const ams = new AzureMediaServices(credentials, process.env.AZURE_SUBSCRIPTION_ID!);
+    const ams = new AzureMediaServices(
+      credentials,
+      event.data.encrypted.credentials.additionalMetadata!.subscriptionId
+    );
     const expirationDate = new Date();
     expirationDate.setHours(expirationDate.getHours() + 1); // 1 hour of expiration
 
@@ -79,9 +82,10 @@ export const fetchPage = inngest.createFunction(
       .find({
         muxAsset: { $exists: false },
         deleted: { $ne: true },
-        status: 'Processed',
+        status: { $in: ['StaticPlay', 'Processed'] },
         streamingUrl: { $regex: accountName },
         uuid: { $ne: null },
+        duration: { $gt: 1 },
       })
       .sort({ createdAt: -1 })
       .limit(5000)
